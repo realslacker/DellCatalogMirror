@@ -82,6 +82,7 @@ class DellModelInfo {
     [string] $Model
     [string] $SystemId
     [string] $Type
+    DellModelInfo() {}
     DellModelInfo( [string]$Model ) {
         $this.Model = $Model
     }
@@ -192,7 +193,7 @@ function Update-DellCatalogMirror {
     Update a local mirror by downloading the updates specified in the catalog. Skips existing
     files.
     #>
-    [CmdletBinding()]
+    [CmdletBinding( SupportsShouldProcess, ConfirmImpact='Low' )]
     param(
     
         [Parameter( Mandatory, ValueFromPipeline )]
@@ -205,6 +206,11 @@ function Update-DellCatalogMirror {
     )
     
     $ErrorActionPreference = 'Stop'
+
+    $DownloadProtocol = $CatalogXml.Manifest.baseLocationAccessProtocols.ToLower() | Where-Object { $_ -in @( 'http', 'https' ) } | Select-Object -First 1
+    $DownloadHost     = $CatalogXml.Manifest.baseLocation.ToLower()
+
+    $BaseDownloadUri = '{0}://{1}' -f $DownloadProtocol, $DownloadHost
     
     $Path = Resolve-Path -Path $Path | Convert-Path
     
@@ -216,6 +222,8 @@ function Update-DellCatalogMirror {
     [string[]]$ExistingItems = Get-ChildItem -Path $Path -File -Recurse | Where-Object { $_.Directory.FullName -ne $Path } | Select-Object -ExpandProperty FullName
     
     Write-Verbose ( 'Before processing there are {0} downloaded software components.' -f $ExistingItems.Count )
+
+    $UpdatedCatalog = $false
     
     # download the components
     [string[]]$DownloadedItems = $CatalogXml.SelectNodes('/Manifest/SoftwareComponent').ForEach({
@@ -241,52 +249,62 @@ function Update-DellCatalogMirror {
     
         $DownloadUri = $BaseDownloadUri, $SoftwareComponent.Path -join '/'
     
-        Write-Verbose ( 'Downloading: {0}' -f $DownloadUri )
+        #Write-Verbose ( 'Downloading: {0}' -f $DownloadUri )
+
+        if ( $PSCmdlet.ShouldProcess($DownloadUri, 'Download Software Package') ) {
     
-        try {
-    
-            Invoke-WebRequest -UseBasicParsing -Uri $DownloadUri -OutFile $DestinationPath -ErrorVariable DownloadError -ErrorAction Stop > $null
-    
-        } catch {
-    
-            Write-Warning ''.PadRight(40,'-')
-            Write-Warning 'DOWNLOAD FAILED'
-            Write-Warning ( 'Error: {0}' -f $_.Exception.Message )
-            $SoftwareComponent.SelectNodes('.//*[@URL]').URL | ForEach-Object {
-                Write-Warning ( 'Link: {0}' -f $_ )
+            try {
+        
+                Invoke-WebRequest -UseBasicParsing -Uri $DownloadUri -OutFile $DestinationPath -ErrorVariable DownloadError -ErrorAction Stop > $null
+        
+            } catch {
+        
+                Write-Warning ''.PadRight(40,'-')
+                Write-Warning 'DOWNLOAD FAILED'
+                Write-Warning ( 'Error: {0}' -f $_.Exception.Message )
+                $SoftwareComponent.SelectNodes('.//*[@URL]').URL | ForEach-Object {
+                    Write-Warning ( 'Link: {0}' -f $_ )
+                }
+                Write-Warning ( 'Destination: {0}' -f $DestinationPath )
+                Write-Warning ''.PadRight(40,'-')
+                return
+        
             }
-            Write-Warning ( 'Destination: {0}' -f $DestinationPath )
-            Write-Warning ''.PadRight(40,'-')
-            return
-    
+        
+            if ( $SoftwareComponent.hashMD5 -ne (Get-FileHash $DestinationPath -Algorithm MD5).Hash ) {
+                
+                Write-Warning 'Hash of downloaded file does not match manifest!'
+        
+            }
+        
+            Write-Verbose ( 'New file: {0}' -f $DestinationPath )
+
+            $UpdatedCatalog = $true
+        
+            return $DestinationPath
+
         }
-    
-        if ( $SoftwareComponent.hashMD5 -ne (Get-FileHash $DestinationPath -Algorithm MD5).Hash ) {
-            
-            Write-Warning 'Hash of downloaded file does not match manifest!'
-    
-        }
-    
-        Write-Verbose ( 'New file: {0}' -f $DestinationPath )
-    
-        return $DestinationPath
     
     })
     
     Write-Verbose ( 'Processed {0} new software components.' -f $DownloadedItems.Count )
+
+    if ( $UpdatedCatalog ) {
     
-    Write-Verbose 'Exporting Catalog...'
-    
-    # clean up the manifest and save
-    $CatalogXml.Manifest.RemoveAttribute('baseLocationAccessProtocols')
-    $CatalogXml.Manifest.baseLocation = ''
-    $CatalogXml.Save( "$Path\Catalog.xml" )
-    
-    Write-Verbose 'Cleaning up old software components...'
-    
-    # remove old downloaded items
-    if ( $ExtraItems = $ExistingItems | Where-Object { $_ -notin $DownloadedItems } ) {
-        Remove-Item -Path $ExtraItems -Confirm:$false -Force
+        Write-Verbose 'Exporting Catalog...'
+        
+        # clean up the manifest and save
+        $CatalogXml.Manifest.RemoveAttribute('baseLocationAccessProtocols')
+        $CatalogXml.Manifest.baseLocation = ''
+        $CatalogXml.Save( "$Path\Catalog.xml" )
+        
+        Write-Verbose 'Cleaning up old software components...'
+        
+        # remove old downloaded items
+        if ( $ExtraItems = $ExistingItems | Where-Object { $_ -notin $DownloadedItems } ) {
+            Remove-Item -Path $ExtraItems -Confirm:$false -Force
+        }
+
     }
 
 }

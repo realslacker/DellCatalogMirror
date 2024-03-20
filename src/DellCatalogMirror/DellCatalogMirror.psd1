@@ -12,7 +12,7 @@
 RootModule = 'DellCatalogMirror.psm1'
 
 # Version number of this module.
-ModuleVersion = '22.10.5.1551'
+ModuleVersion = '24.3.20.1743'
 
 # Supported PSEditions
 # CompatiblePSEditions = @()
@@ -69,7 +69,7 @@ PowerShellVersion = '7.0'
 # NestedModules = @()
 
 # Functions to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no functions to export.
-FunctionsToExport = '*'
+FunctionsToExport = 'Get-DellCatalogModels', 'Import-DellCatalogXml', 'Optimize-DellCatalogXml', 'Update-DellCatalogMirror'
 
 # Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = '*'
