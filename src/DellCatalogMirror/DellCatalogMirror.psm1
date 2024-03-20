@@ -192,6 +192,8 @@ function Update-DellCatalogMirror {
     .DESCRIPTION
     Update a local mirror by downloading the updates specified in the catalog. Skips existing
     files.
+    .PARAMETER Path
+    Location of the mirror on disk
     #>
     [CmdletBinding( SupportsShouldProcess, ConfirmImpact='Low' )]
     param(
@@ -200,8 +202,9 @@ function Update-DellCatalogMirror {
         [xml]
         $CatalogXml,
     
+        [Parameter( Mandatory )]
         [string]
-        $Path = $PSScriptRoot
+        $Path
     
     )
     
